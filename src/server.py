@@ -11,6 +11,7 @@ class threadedXMLRPCServer(ThreadingMixIn, SimpleXMLRPCServer):
 ##  brandon code
 # def sync(directory_address):
 Metadata={}
+StoreBlock={}
 ## class file:
 class info_meta:
     def __init__(self,filename, version,hashlist):
