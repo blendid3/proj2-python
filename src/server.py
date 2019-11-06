@@ -8,6 +8,68 @@ class RequestHandler(SimpleXMLRPCRequestHandler):
 class threadedXMLRPCServer(ThreadingMixIn, SimpleXMLRPCServer):
     pass
 
+##  brandon code
+# def sync(directory_address):
+Metadata={}
+## class file:
+class info_meta:
+    def __init__(self,filename, version,hashlist):
+        self.version = version
+        self.hashlist=hashlist
+        self.filename=filename
+
+    def getfileinfomap(self,path):
+        with open(path + "/" + "index.txt", "a") as fw:
+            for i in metastorage:
+                print(i)
+                fw.write(str(i) + " " + str(metastorage[i].version) + " " + metastorage[i].hashlist + "\n")
+    def clear_file(self,path):
+        with open(path + "/" + "index.txt", "w+") as fw:
+            fw.write("")
+    def update_file(self, version,hashlist):
+        self.version = version
+        self.hashlist=hashlist
+##
+def getfilesize(filename):
+    ##filename=
+    with open(filename, "rb") as fr:
+        fr.seek(0, 2)  # move to end of the file
+        size = fr.tell()
+        return fr.tell()
+
+def filesplit(filename,readlimit):
+    # filename = r"C:\Users\zhqbl\OneDrive\桌面\CSE224-master\hw_2\proj2-python\src\base_directory_client1\1mb-test_csv.csv"
+    filesize = getfilesize(filename)
+    # readlimit = 4096
+    n_splits = math.ceil(filesize / readlimit)
+    datalist=[]
+    with open(filename, "rb") as fr:
+        for i in range(n_splits):
+            data = fr.read(readlimit)  # read
+            datalist.append(data)
+    return datalist
+
+## input datalist
+## output hashlist and StoreBlock
+def creat_hashlist(datalist):
+    hashlist=[]
+    for data in datalist:
+        sha256.update(data)
+        StoreBlock[sha256.hexdigest()] = data
+        hashlist.append(sha256.hexdigest())
+    return hashlist
+##
+
+def update_metastorage(file,hashlist):
+    # Check if dict contains any entry with key 'test'
+    if file in Metadata:
+        Metadata[file]
+    else:
+        file_info = info_meta(version=1,filename=file,hashlist=hashlist)
+        Metadata[file]=file_info
+##
+
+##
 # A simple ping, returns true
 def ping():
     """A simple ping method"""
