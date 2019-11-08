@@ -8,104 +8,6 @@ class RequestHandler(SimpleXMLRPCRequestHandler):
 class threadedXMLRPCServer(ThreadingMixIn, SimpleXMLRPCServer):
     pass
 
-##  brandon code
-# def sync(directory_address):
-##local_map : {} filename-> file_info(class version and hashlist)
-##meta_map : {}filename-> file_info(class version and hashlist)
-##client directory path:
-local_map={}
-meta_map ={}
-block_map={}# hashlist-> block
-path=""
-def synchronize(path,local_map):
-    upload_server(path,local_map)
-    download_client(path,local_map)
-    update_indexfile(path,local_map)
-
-## delete the server file
-def delete_file(file):
-    if file in meta_map.key():
-        meta_map(file).hashlist = "\0"
-        meta_map(file).version += 1
-    else:
-        print("file is not exist")
-
-class file_info:
-    def __init__(self,filename, version,hashlist):
-        self.version = version
-        self.hashlist=hashlist
-        self.filename=filename
-def upload_server(path,local_map):
-    for file in local_map.key():
-        if file != "index.txt" and file in Meta_map.key():
-            if local_map(file).version == meta_map(file).version:
-                if local_map(file).hashlist !=meta_map(file).hashlist:
-                    upload(file,path)
-                    meta_map(file).version+=1
-                    local_map(file).version+=1
-
-        else:
-            upload(file,path)
-            new_file=info_meta(version=1, filename=file, hashlist=local_map(file).hashlist)
-            meta_map[file]=new_file
-
-def download_client(path,local_map):
-    for file in meta_map.key():
-        if file in local_map.key():
-            if local_map(file).version < meta_map(file).version:
-                if meta_map(file).hashlist !="\0":
-                    download_file(file,path)
-                else:
-                    delete_client_file(file)
-        else:
-            download_file(file)
-
-def update_indexfile(path):
-    ## update index file
-    with open(path + "/" + "index.txt", "w+") as fw:
-        for file in meta_map.key():
-            fw.write(file+ " "+ str(meta_map[file].version) +" "+ meta_map[file].hashlist+"\n")
-
-
-def upload(file,path):
-    with open(path + "/" + file, "rb") as fr:
-        fr.read()
-        fr.seek(0, 2)  # move to end of the file
-        filesize = fr.tell()
-        read_limit=4096
-        n_splits = math.ceil(filesize / readlimit)
-        datalist = []
-        for i in range(n_splits):
-            data = fr.read(readlimit)  # read
-            datalist.append(data)
-    hash_list=creat_hashlist(datalist)
-    for i in range(len(hash_list)):
-        block_map[hash_list[i]]=datalist[i]## update the block_map
-    meta_map[file].hashlist=hash_list##updat the meta_map
-
-
-
-def creat_hashlist(datalist):
-    hashlist = []
-    for data in datalist:
-        sha256.update(data)
-        StoreBlock[sha256.hexdigest()] = data
-        hashlist.append(sha256.hexdigest())
-    return hashlist
-
-def download_file(file,path):
-    with open(path + "/" + file, "w+") as fw:
-        fw.write("")
-    with open(path + "/" + file, "ab") as fw:
-        hash_list=meta_map(file).hashlist
-        for hash in hash_list:
-            fw.write(block_map[hash])
-## delete command
-def delete_client_file(file,path):
-    if os.path.exists(path+"/"+file):
-        os.remove(path+"/"+file)
-    else:
-        print("Can not delete the file as it doesn't exists")
 # A simple ping, returns true
 def ping():
     """A simple ping method"""
@@ -212,11 +114,6 @@ if __name__ == "__main__":
         server.register_function(crash,"surfstore.crash")
         server.register_function(restore,"surfstore.restore")
         server.register_function(isCrashed,"surfstore.iscrashed")
-
-        ## brandon
-        server.register_function(synchronize,"surfstore.synchronize")
-        server.register_function(delete_file, "surfstore.delete_file")
-        ##
         print("Started successfully.")
         print("Accepting requests. (Halt program to stop.)")
         server.serve_forever()
