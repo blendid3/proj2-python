@@ -32,6 +32,21 @@ block_map={}
 ##
 def get_metamap():
     return meta_map
+
+
+
+def update_file_info(filename,version,hashlist):
+    new_info=file_info(filename=filename,version=version,hashlist=hashlist)
+    filename=new_info.filename
+    meta_map[filename]=new_info
+    return new_info
+##
+
+##
+def update_block_map(hashlist,blocklist):
+    for i in range(len(hashlist)):
+        block_map[hashlist[i]]=blocklist[i]
+
 # A simple ping, returns true
 def ping():
     """A simple ping method"""
@@ -64,18 +79,6 @@ def hasblocks(blocklist):
         if  block in block_map.values():
             blocklist_subset.append(block)
     return blocklist_subset
-
-def update_file_info(filename,version,hashlist):
-    new_info=file_info(filename=filename,version=version,hashlist=hashlist)
-    filename=new_info.filename
-    meta_map[filename]=new_info
-    return new_info
-##
-
-##
-def update_block_map(hashlist,blocklist):
-    for i in range(len(hashlist)):
-        block_map[hashlist[i]]=blocklist[i]
 
 # Retrieves the server's FileInfoMap
 # input hashlist , filename
@@ -139,7 +142,6 @@ def restore():
 # This method should always work, even when the node is crashed
 def isCrashed():
     """Returns whether this node is crashed or not"""
-
     print("IsCrashed()")
     return True
 
@@ -153,23 +155,12 @@ if __name__ == "__main__":
         server.register_function(putblock,"surfstore.putblock")
         server.register_function(hasblocks,"surfstore.hasblocks")
         server.register_function(getfileinfomap,"surfstore.getfileinfomap")
-        server.register_instance(meta_map)
-        server.register_instance(block_map)
-        #server.register_instance(file_info())
-
         server.register_function(updatefile,"surfstore.updatefile")
-        server.register_function(update_file_info, "surfstore.update_file_info")
-        server.register_function(get_metamap, "surfstore.get_metamap")
-        server.register_function(adder_function, "surfstore.adder_function")
 
         server.register_function(isLeader,"surfstore.isleader")
         server.register_function(crash,"surfstore.crash")
         server.register_function(restore,"surfstore.restore")
         server.register_function(isCrashed,"surfstore.iscrashed")
-
-        ## brandon
-
-        ##
         print("Started successfully.")
         print("Accepting requests. (Halt program to stop.)")
         server.serve_forever()
