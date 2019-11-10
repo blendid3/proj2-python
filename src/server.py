@@ -1,6 +1,7 @@
 from xmlrpc.server import SimpleXMLRPCServer
 from xmlrpc.server import SimpleXMLRPCRequestHandler
 from socketserver import ThreadingMixIn
+import hashlib
 
 class RequestHandler(SimpleXMLRPCRequestHandler):
     rpc_paths = ('/RPC2',)
@@ -8,44 +9,14 @@ class RequestHandler(SimpleXMLRPCRequestHandler):
 class threadedXMLRPCServer(ThreadingMixIn, SimpleXMLRPCServer):
     pass
 
-class file_info:
-    def __init__(self, filename, version, hashlist):
-        self.version = version
-        self.hashlist = hashlist
-        self.filename = filename
 
-##  brandon code
-# def sync(directory_address):
-def creat_hashlist(datalist):
-    hashlist = []
-    for data in datalist:
-        sha256.update(data)
-        hashlist.append(sha256.hexdigest())
-    return hashlist
-##local_map : {} filename-> file_info(class version and hashlist)
-##meta_map : {}filename-> file_info(class version and hashlist)
-##client directory path:
+meta_map = {}
+block_map = {}
 
-meta_map ={}
-block_map={}
-
-##
-def get_metamap():
-    return meta_map
-
-
-
-def update_file_info(filename,version,hashlist):
-    new_info=file_info(filename=filename,version=version,hashlist=hashlist)
-    filename=new_info.filename
-    meta_map[filename]=new_info
-    return new_info
-##
-
-##
-def update_block_map(hashlist,blocklist):
-    for i in range(len(hashlist)):
-        block_map[hashlist[i]]=blocklist[i]
+def hash_chunk(chunk):
+    sha256 = hashlib.sha256()
+    sha256.update(chunk)
+    return sha256.hexdigest()
 
 # A simple ping, returns true
 def ping():
@@ -58,58 +29,38 @@ def getblock(h):
     """Gets a block"""
     print("GetBlock(" + h + ")")
     blockData=block_map[h]
-    #blockData = bytes(4)
     return blockData
 
 # Puts a block
 def putblock(b):
     """Puts a block"""
-    sha256 = hashlib.sha256()
     print("PutBlock()")
-    hash=sha256.update(b)
-    block_map[hash]=b
+    block_map[hash_chunk(b)] = b
     return True
 
 # Given a list of blocks, return the subset that are on this server
 def hasblocks(blocklist):
     """Determines which blocks are on this server"""
     print("HasBlocks()")
-    blocklist_subset=[]
-    for block in blocklist:
-        if  block in block_map.values():
-            blocklist_subset.append(block)
-    return blocklist_subset
+    return [hash for hash in blocklist if hash in block_map.keys()]
 
 # Retrieves the server's FileInfoMap
-# input hashlist , filename
-# make Meta_map,
 def getfileinfomap():
     """Gets the fileinfo map"""
     print("GetFileInfoMap()")
-
-    result = {}
-
-    # file1.dat
-    file1info = []
-    file1info.append(3) // version
-
-    file1blocks = []
-    file1blocks.append("h1")
-    file1blocks.append("h2")
-    file1blocks.append("h3")
-
-    file1info.append(file1blocks)
-    
-    result["file1.dat"] = file1info#metamap
-
-    return result
+    return meta_map
 
 # Update a file's fileinfo entry
 def updatefile(filename, version, blocklist):
     """Updates a file's fileinfo entry"""
     print("UpdateFile()")
-    meta_map[filename].version=version
-    meta_map[filename].hashlist=creat_hashlist(blocklist)
+
+    if filename not in meta_map.keys():
+        if version != 1:
+            return False
+    elif version != meta_map[filename][0] + 1:
+        return False
+    meta_map[filename] = [version, blocklist]
     return True
 
 # PROJECT 3 APIs below
