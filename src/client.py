@@ -127,6 +127,7 @@ class Client:
             chunks, hashes = self.split_and_hash_file(self.basedir / name)
             file_info_map[name] = [1, hashes]
             for block in [chunks[i] for i in range(len(chunks)) if hashes[i] not in self.client.surfstore.hasblocks(hashes)]:
+                print(type(block))
                 self.client.surfstore.putblock(block)
             self.client.surfstore.updatefile(name, 1, hashes)
 
@@ -149,8 +150,8 @@ class Client:
         common_files = server_names & local_names
 
         for name in new_server_files:
-            path = Path(self.basefir / name)
-            while server_file_info_map[name][1] != self.deleted_hashes and self.write_file(path, [self.client.surfstore.getblock(hash) for hash in server_file_info_map[name][1]]) == 0:
+            path = Path(self.basedir / name)
+            while server_file_info_map[name][1] != self.deleted_hashes and self.write_file(path, [self.client.surfstore.getblock(hash).data for hash in server_file_info_map[name][1]]) == 0:
                 pass
             file_info_map[name] = server_file_info_map[name]
 
@@ -162,10 +163,10 @@ class Client:
                     for i in range(min(len(server_file_info_map[name][1]), len(file_info_map[name][1]))):
                         if server_file_info_map[name][1][i] != file_info_map[name][1][i]:
                             blocks[i] = self.client.surfstore.getblock(
-                                server_file_info_map[name][1][i])
+                                server_file_info_map[name][1][i]).data
                     if len(server_file_info_map[name][1]) > len(file_info_map[name][1]):
                         blocks.extend([self.client.surfstore.getblock(
-                            hash) for hash in file_info_map[name][1][len(file_info_map[name][1]):]])
+                            hash).data for hash in file_info_map[name][1][len(file_info_map[name][1]):]])
                     self.write_file(path, blocks)
                 elif path.exists():
                     self.delete_file(path)

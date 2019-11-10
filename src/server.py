@@ -35,6 +35,7 @@ def getblock(h):
 def putblock(b):
     """Puts a block"""
     print("PutBlock()")
+    b = b.data
     block_map[hash_chunk(b)] = b
     return True
 
