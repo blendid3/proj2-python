@@ -1,15 +1,16 @@
 import argparse
-import xmlrpc.client
-import os
-import hashlib
-from pathlib import Path
-import shutil
 import copy
+import hashlib
+import os
+import shutil
 import time
+import xmlrpc.client
+from pathlib import Path
 
 
 class Client:
     def __init__(self, args):
+        self.deleted_hashes = ["0"]
         self.client = None
         self.error = False
 
@@ -32,31 +33,41 @@ class Client:
         return sha256.hexdigest()
 
     # path: Path object according to https://docs.python.org/zh-cn/3/library/pathlib.html
-    def get_file_size(self, path):
+    def get_blocks(self, path):
         if not path.is_file():
             print("No such file as: \"%s\"" % str(path))
-            return
+            return []
 
         path = path.resolve(strict=False)  # Requires Python 3.6
-        size = path.stat().st_size
-        print("getfilesize: size: %s" % size)
-        return size
+        filesize = path.stat().st_size
+        bytes = path.read_bytes()
+        assert len(bytes) == filesize
+        return [bytes[chunk_count * self.blocksize: (chunk_count + 1) * self.blocksize] for chunk_count in range(-(-len(bytes) // self.blocksize))]
 
     # path: Path object according to https://docs.python.org/zh-cn/3/library/pathlib.html
     def split_and_hash_file(self, path):
-        if not path.is_file():
-            print("No such file as: \"%s\"" % str(path))
-            return
-
-        path = path.resolve(strict=False)  # Requires Python 3.6
-        filesize = self.get_file_size(path)
-        bytes = path.read_bytes()
-        assert len(bytes) == filesize
-
-        chunks = [bytes[chunk_count * self.blocksize: (chunk_count + 1) * self.blocksize]
-                  for chunk_count in range(-(-len(bytes) // self.blocksize))]
+        chunks = self.get_blocks(path)
         hashes = [self.hash_chunk(chunk) for chunk in chunks]
         return chunks, hashes
+
+    def write_file_info_map(self, file_info_map):
+        return Path(self.basedir / "index.txt").write_text("\n".join([" ".join([filename, str(
+            info[0]), " ".join(info[1])]) for filename, info in file_info_map.items()]))
+
+    # path: Path object according to https://docs.python.org/zh-cn/3/library/pathlib.html
+    def write_file(self, path, blocks):
+        return path.write_bytes(b''.join(blocks))
+
+    # path: Path object according to https://docs.python.org/zh-cn/3/library/pathlib.html
+    def delete_file(self, path):
+        try:
+            path.unlink()  # remove file or symbolic link
+        except Exception:  # Might be a path
+            try:
+                shutil.rmtree(str(path))  # remove path
+            except Exception as e:
+                raise FileNotFoundError(
+                    "Unable to create the required index.txt file!")
 
     def load_file_info_map(self):
         index_txt_path = Path(self.basedir / "index.txt")
@@ -69,14 +80,7 @@ class Client:
             another_kind_of_file = True
         if another_kind_of_file:
             if input("Do you want to remove index.txt in order to use the SurfStore client? [Y/N]").lower() == "y":
-                try:
-                    index_txt_path.unlink()  # remove file or symbolic link
-                except Exception:  # Might be a path
-                    try:
-                        shutil.rmtree(str(index_txt_path))  # remove path
-                    except Exception as e:
-                        raise FileNotFoundError(
-                            "Unable to create the required index.txt file!")
+                self.delete_file(index_txt_path)
                 while index_txt_path.exists():
                     pass
                 index_txt_path.touch(mode=0o644, exist_ok=False)
@@ -92,7 +96,16 @@ class Client:
             file_info_map[line[0]] = [int(line[1]), line[2:]]
         return file_info_map
 
-    def update_file_info_map(self, file_info_map):
+    # the function is to create the local_map and compare the file in directory with local map
+    # if the index.txt doesn't exist, then create new index.txt, and set all version is 1
+    # if the index.txt exist:
+    # 1. if the file modified, the version plus 1 and the hashlist change
+    # 2. if the file deleted , the version plus 1 and the hashlist become 0
+    # 3. if the file created, the new map created and the version become 1
+    ##
+    #configure:path and read_limit
+
+    def update_and_upload_file_info_map(self, file_info_map):
         # Get all file names in this directory if it is not a directory and is not index.txt
         files = [x for x in self.basedir.iterdir() if x.is_file()
                  and x.name != "index.txt"]
@@ -103,14 +116,19 @@ class Client:
         others = names & previous_names
 
         for name in removed_files:
-            if file_info_map[name][1] != ["0"]:
-                file_info_map[name][1] = ["0"]
+            if file_info_map[name][1] != self.deleted_hashes:
+                file_info_map[name][1] = self.deleted_hashes
                 file_info_map[name][0] += 1
+                self.client.surfstore.updatefile(
+                    name, file_info_map[name][0], self.deleted_hashes)
 
         for name in new_files:  # Iterate folder
             # Get the chunks and the SHA-256 hash of each trunk
             chunks, hashes = self.split_and_hash_file(self.basedir / name)
             file_info_map[name] = [1, hashes]
+            for block in [chunks[i] for i in range(len(chunks)) if hashes[i] not in self.client.surfstore.hasblocks(hashes)]:
+                self.client.surfstore.putblock(block)
+            self.client.surfstore.updatefile(name, 1, hashes)
 
         for name in others:
             # Get the chunks and the SHA-256 hash of each trunk
@@ -118,44 +136,40 @@ class Client:
             if hashes != file_info_map[name][1]:
                 file_info_map[name][0] += 1
                 file_info_map[name][1] = hashes
+                for block in [chunks[i] for i in range(len(chunks)) if hashes[i] not in self.client.surfstore.hasblocks(hashes)]:
+                    self.client.surfstore.putblock(block)
+                self.client.surfstore.updatefile(
+                    file_info_map[name][0], 1, hashes)
 
-    def write_file_info_map(self, file_info_map):
-        Path(self.basedir / "index.txt").write_text("\n".join([" ".join([filename, str(
-            info[0]), " ".join(info[1])]) for filename, info in file_info_map.items()]))
+    def download_from_server(self, file_info_map):
+        server_file_info_map = self.client.surfstore.getfileinfomap()
+        local_names = frozenset(file_info_map.keys())
+        server_names = frozenset(server_file_info_map.keys())
+        new_server_files = server_names - local_names
+        common_files = server_names & local_names
 
-    ## the function is to create the local_map and compare the file in directory with local map
-    ## if the index.txt doesn't exist, then create new index.txt, and set all version is 1
-    ## if the index.txt exist:
-    ## 1. if the file modified, the version plus 1 and the hashlist change
-    ## 2. if the file deleted , the version plus 1 and the hashlilst become \0
-    ## 3. if the file created, the new map created and the version become 1
-    ##
-    #configure:path and read_limit
+        for name in new_server_files:
+            path = Path(self.basefir / name)
+            while server_file_info_map[name][1] != self.deleted_hashes and self.write_file(path, [self.client.surfstore.getblock(hash) for hash in server_file_info_map[name][1]]) == 0:
+                pass
+            file_info_map[name] = server_file_info_map[name]
 
-    def upload_server(client, path, local_map, meta_map):
-        for file in local_map:
-            if file != "index.txt" and file in meta_map:
-                if local_map[file].version > meta_map[file].version:  # can upload
-                    if local_map[file].hashlist != meta_map[file].hashlist:
-                        file_path = path+"/"+file
-                        blocklist = creat_datelist(file_path, read_limit)
-                        # update the meta_map of server
-                        client.update_file_info(local_map[file])
-                        client.update_block_map(
-                            local_map[file].hashlist, blocklist)
-                        meta_map[file] = local_map[file]
-            else:
-                if file != "index.txt":
-                    file_path = path + "/" + file
-                    blocklist = creat_datelist(file_path, read_limit)
-                    print(local_map[file].filename)
-                    print(local_map[file].hashlist)
-                    # update the meta_map of server
-                    client.update_file_info(
-                        local_map[file].filename, local_map[file].version, local_map[file].hashlist)
-                    client.update_block_map(
-                        local_map[file].hashlist, blocklist)
-                    meta_map[file] = local_map[file]
+        for name in common_files:
+            path = Path(self.basefir / name)
+            if server_file_info_map[name][0] > file_info_map[name][0]:
+                if server_file_info_map[name][1] != self.deleted_hashes:
+                    blocks = self.get_blocks(path)
+                    for i in range(min(len(server_file_info_map[name][1]), len(file_info_map[name][1]))):
+                        if server_file_info_map[name][1][i] != file_info_map[name][1][i]:
+                            blocks[i] = self.client.surfstore.getblock(
+                                server_file_info_map[name][1][i])
+                    if len(server_file_info_map[name][1]) > len(file_info_map[name][1]):
+                        blocks.extend([self.client.surfstore.getblock(
+                            hash) for hash in file_info_map[name][1][len(file_info_map[name][1]):]])
+                    self.write_file(path, blocks)
+                elif path.exists():
+                    self.delete_file(path)
+                file_info_map[name] = server_file_info_map[name]
 
     def sync(self):
         try:
@@ -178,12 +192,17 @@ class Client:
             print("Client sync() file info map loading: " + str(e))
             return
 
-        local_file_info_map = copy.deepcopy(file_info_map)
-        server_file_info_map = self.client.surfstore.getfileinfomap()
+        self.download_from_server(file_info_map)
 
-        new_file_info_map = copy.deepcopy(local_file_info_map)
-        self.update_file_info_map(new_file_info_map)
-        self.write_file_info_map(new_file_info_map)
+        # Now if a subset of the files in your base directory are newer than
+        # the remote, you need to call updatefile(). It is possible
+        # updatefile() fails because someone else beat you to the cloud.
+        # You'll download the newer version by calling getfileinfomap.
+        # But don't then go back and check teh files you already checked before
+        # just keep looping through your local updates then quit.
+        local_file_info_map = copy.deepcopy(file_info_map)
+        self.update_and_upload_file_info_map(local_file_info_map)
+        self.write_file_info_map(local_file_info_map)
 
 
 def main():
