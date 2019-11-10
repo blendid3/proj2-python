@@ -1,5 +1,4 @@
 import argparse
-import copy
 import hashlib
 import os
 import shutil
@@ -18,8 +17,8 @@ class Client:
             self.blocksize = int(args.blocksize)
             self.basedir = Path(str(args.basedir)).resolve(
                 strict=False)  # Requires Python 3.6
-            self.hostport = str(args.hostport)
-            self.client = xmlrpc.client.ServerProxy(self.hostport)
+            self.client = xmlrpc.client.ServerProxy(
+                "http://" + str(args.hostport))
             assert self.blocksize > 0
 
         except Exception as e:
@@ -106,6 +105,8 @@ class Client:
     #configure:path and read_limit
 
     def update_and_upload_file_info_map(self, file_info_map):
+        unsuccessful = False
+
         # Get all file names in this directory if it is not a directory and is not index.txt
         files = [x for x in self.basedir.iterdir() if x.is_file()
                  and x.name != "index.txt"]
@@ -119,8 +120,8 @@ class Client:
             if file_info_map[name][1] != self.deleted_hashes:
                 file_info_map[name][1] = self.deleted_hashes
                 file_info_map[name][0] += 1
-                self.client.surfstore.updatefile(
-                    name, file_info_map[name][0], self.deleted_hashes)
+                if not self.client.surfstore.updatefile(name, file_info_map[name][0], self.deleted_hashes):
+                    unsuccessful = True
 
         for name in new_files:  # Iterate folder
             # Get the chunks and the SHA-256 hash of each trunk
@@ -129,7 +130,8 @@ class Client:
             blocks_exists_on_server = self.client.surfstore.hasblocks(hashes)
             for block in [chunks[i] for i in range(len(chunks)) if hashes[i] not in blocks_exists_on_server]:
                 self.client.surfstore.putblock(block)
-            self.client.surfstore.updatefile(name, 1, hashes)
+            if not self.client.surfstore.updatefile(name, 1, hashes):
+                unsuccessful = True
 
         for name in others:
             # Get the chunks and the SHA-256 hash of each trunk
@@ -137,11 +139,14 @@ class Client:
             if hashes != file_info_map[name][1]:
                 file_info_map[name][0] += 1
                 file_info_map[name][1] = hashes
-                blocks_exists_on_server = self.client.surfstore.hasblocks(hashes)
+                blocks_exists_on_server = self.client.surfstore.hasblocks(
+                    hashes)
                 for block in [chunks[i] for i in range(len(chunks)) if hashes[i] not in blocks_exists_on_server]:
                     self.client.surfstore.putblock(block)
-                self.client.surfstore.updatefile(
-                    file_info_map[name][0], 1, hashes)
+                if not self.client.surfstore.updatefile(file_info_map[name][0], 1, hashes):
+                    unsuccessful = True
+
+        return not unsuccessful
 
     def download_from_server(self, file_info_map):
         server_file_info_map = self.client.surfstore.getfileinfomap()
@@ -194,21 +199,22 @@ class Client:
             print("Client sync() file info map loading: " + str(e))
             return
 
-        self.download_from_server(file_info_map)
+        while True:
+            self.download_from_server(file_info_map)
 
-        # Now if a subset of the files in your base directory are newer than
-        # the remote, you need to call updatefile(). It is possible
-        # updatefile() fails because someone else beat you to the cloud.
-        # You'll download the newer version by calling getfileinfomap.
-        # But don't then go back and check teh files you already checked before
-        # just keep looping through your local updates then quit.
-        local_file_info_map = copy.deepcopy(file_info_map)
-        self.update_and_upload_file_info_map(local_file_info_map)
-        self.write_file_info_map(local_file_info_map)
+            # Now if a subset of the files in your base directory are newer
+            # than the remote, you need to call updatefile(). It is possible
+            # updatefile() fails because someone else beat you to the cloud.
+            # You'll download the newer version by calling getfileinfomap.
+            # But don't then go back and check teh files you already checked
+            # before just keep looping through your local updates then quit.
+            if self.update_and_upload_file_info_map(file_info_map):
+                break
+        self.write_file_info_map(file_info_map)
 
 
 def main():
-    # the right format is: python client.py http://localhost:8080 basedir_address 1024(for example)
+    # the right format is: python client.py localhost:8080 basedir_address 1024(for example)
     # ./: current dir
     # Slash + input plus /
     # Tilda
