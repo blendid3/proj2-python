@@ -143,7 +143,7 @@ class Client:
                     hashes)
                 for block in [chunks[i] for i in range(len(chunks)) if hashes[i] not in blocks_exists_on_server]:
                     self.client.surfstore.putblock(block)
-                if not self.client.surfstore.updatefile(file_info_map[name][0], 1, hashes):
+                if not self.client.surfstore.updatefile(name, file_info_map[name][0], hashes):
                     unsuccessful = True
 
         return not unsuccessful
