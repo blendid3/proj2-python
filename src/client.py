@@ -162,7 +162,7 @@ class Client:
             file_info_map[name] = server_file_info_map[name]
 
         for name in common_files:
-            path = Path(self.basefir / name)
+            path = Path(self.basedir / name)
             if server_file_info_map[name][0] > file_info_map[name][0]:
                 if server_file_info_map[name][1] != self.deleted_hashes:
                     blocks = self.get_blocks(path)
