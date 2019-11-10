@@ -127,7 +127,6 @@ class Client:
             chunks, hashes = self.split_and_hash_file(self.basedir / name)
             file_info_map[name] = [1, hashes]
             for block in [chunks[i] for i in range(len(chunks)) if hashes[i] not in self.client.surfstore.hasblocks(hashes)]:
-                print(type(block))
                 self.client.surfstore.putblock(block)
             self.client.surfstore.updatefile(name, 1, hashes)
 
