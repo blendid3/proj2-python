@@ -126,7 +126,8 @@ class Client:
             # Get the chunks and the SHA-256 hash of each trunk
             chunks, hashes = self.split_and_hash_file(self.basedir / name)
             file_info_map[name] = [1, hashes]
-            for block in [chunks[i] for i in range(len(chunks)) if hashes[i] not in self.client.surfstore.hasblocks(hashes)]:
+            blocks_exists_on_server = self.client.surfstore.hasblocks(hashes)
+            for block in [chunks[i] for i in range(len(chunks)) if hashes[i] not in blocks_exists_on_server]:
                 self.client.surfstore.putblock(block)
             self.client.surfstore.updatefile(name, 1, hashes)
 
@@ -136,7 +137,8 @@ class Client:
             if hashes != file_info_map[name][1]:
                 file_info_map[name][0] += 1
                 file_info_map[name][1] = hashes
-                for block in [chunks[i] for i in range(len(chunks)) if hashes[i] not in self.client.surfstore.hasblocks(hashes)]:
+                blocks_exists_on_server = self.client.surfstore.hasblocks(hashes)
+                for block in [chunks[i] for i in range(len(chunks)) if hashes[i] not in blocks_exists_on_server]:
                     self.client.surfstore.putblock(block)
                 self.client.surfstore.updatefile(
                     file_info_map[name][0], 1, hashes)
