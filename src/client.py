@@ -126,10 +126,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
     path = args.client_dir
     read_limit = args.blocksize
-    local_map = creat_map(path, read_limit)
+    local_map = creat_map(path, read_limit)## finish creating local map
     client = xmlrpc.client.ServerProxy(args.hostport)
-    meta_map = client.surfstore.get_metamap()
-    upload_server(client, path, local_map, meta_map)
+    meta_map = client.surfstore.get_metamap()# get the meta_map from server
+    upload_server(client, path, local_map, meta_map)## update the meta_map and block map of the server
     meta_map = client.surfstore.get_metamap()
     for key in meta_map:
         print(key)
