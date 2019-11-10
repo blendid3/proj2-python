@@ -4,6 +4,8 @@ import os
 import hashlib
 from pathlib import Path
 import shutil
+import copy
+import time
 
 
 class Client:
@@ -75,11 +77,51 @@ class Client:
                     except Exception as e:
                         raise FileNotFoundError(
                             "Unable to create the required index.txt file!")
+                while index_txt_path.exists():
+                    pass
                 index_txt_path.touch(mode=0o644, exist_ok=False)
             else:
                 raise FileNotFoundError(
                     "Unable to create the required index.txt file!")
-        return index_txt_path.read_text().splitlines()
+        lines = [line.split()
+                 for line in index_txt_path.read_text().splitlines()]
+        file_info_map = {}
+        for line in lines:
+            if len(line) < 3:
+                raise ValueError("Index.txt is not correctly formatted!")
+            file_info_map[line[0]] = [int(line[1]), line[2:]]
+        return file_info_map
+
+    def update_file_info_map(self, file_info_map):
+        # Get all file names in this directory if it is not a directory and is not index.txt
+        files = [x for x in self.basedir.iterdir() if x.is_file()
+                 and x.name != "index.txt"]
+        names = frozenset([x.name for x in files])
+        previous_names = frozenset(file_info_map.keys())
+        new_files = names - previous_names
+        removed_files = previous_names - names
+        others = names & previous_names
+
+        for name in removed_files:
+            if file_info_map[name][1] != ["0"]:
+                file_info_map[name][1] = ["0"]
+                file_info_map[name][0] += 1
+
+        for name in new_files:  # Iterate folder
+            # Get the chunks and the SHA-256 hash of each trunk
+            chunks, hashes = self.split_and_hash_file(self.basedir / name)
+            file_info_map[name] = [1, hashes]
+
+        for name in others:
+            # Get the chunks and the SHA-256 hash of each trunk
+            chunks, hashes = self.split_and_hash_file(self.basedir / name)
+            if hashes != file_info_map[name][1]:
+                file_info_map[name][0] += 1
+                file_info_map[name][1] = hashes
+
+    def write_file_info_map(self, file_info_map):
+        Path(self.basedir / "index.txt").write_text("\n".join([" ".join([filename, str(
+            info[0]), " ".join(info[1])]) for filename, info in file_info_map.items()]))
 
     def sync(self):
         try:
@@ -102,13 +144,12 @@ class Client:
             print("Client sync() file info map loading: " + str(e))
             return
 
-        # Get all file names in this directory
-        files = [x for x in self.basedir.iterdir()]
-        for file in files:  # Iterate folder
-            # Open the file only if it is not a directory and is not index.txt
-            if file.name != "index.txt" and file.is_file():
-                # Get the chunks and the SHA-256 hash of each trunk
-                chunks, hashes = self.split_and_hash_file(file)
+        local_file_info_map = copy.deepcopy(file_info_map)
+        server_file_info_map = self.client.surfstore.getfileinfomap()
+
+        new_file_info_map = copy.deepcopy(local_file_info_map)
+        self.update_file_info_map(new_file_info_map)
+        self.write_file_info_map(new_file_info_map)
 
 
 def main():
@@ -121,10 +162,9 @@ def main():
     parser.add_argument('hostport', help='host:port of the server')
     parser.add_argument('basedir', help='The base directory')
     parser.add_argument('blocksize', type=int, help='Block size')
-    args = parser.parse_args()
-    client = Client(args)
+    client = Client(parser.parse_args())
     if client.error:
-        exit(1)
+        return
     client.sync()
 
 
