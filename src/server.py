@@ -8,11 +8,7 @@ class RequestHandler(SimpleXMLRPCRequestHandler):
 class threadedXMLRPCServer(ThreadingMixIn, SimpleXMLRPCServer):
     pass
 
-class file_info:
-    def __init__(self, filename, version, hashlist):
-        self.version = version
-        self.hashlist = hashlist
-        self.filename = filename
+
 
 ##  brandon code
 # def sync(directory_address):
@@ -31,7 +27,8 @@ block_map={}
 
 ##
 def get_metamap():
-    return meta_map
+    #global meta_map
+    return  meta_map
 # A simple ping, returns true
 def ping():
     """A simple ping method"""
@@ -66,14 +63,14 @@ def hasblocks(blocklist):
     return blocklist_subset
 
 def update_file_info(filename,version,hashlist):
-    new_info=file_info(filename=filename,version=version,hashlist=hashlist)
-    filename=new_info.filename
-    meta_map[filename]=new_info
-    return new_info
+    meta_map[filename]=[version,hashlist]
+
 ##
 
 ##
 def update_block_map(hashlist,blocklist):
+    if hashlist[0]=="0":
+        return
     for i in range(len(hashlist)):
         block_map[hashlist[i]]=blocklist[i]
 
@@ -102,11 +99,11 @@ def getfileinfomap():
     return result
 
 # Update a file's fileinfo entry
+#have something wrong
 def updatefile(filename, version, blocklist):
     """Updates a file's fileinfo entry"""
     print("UpdateFile()")
-    meta_map[filename].version=version
-    meta_map[filename].hashlist=creat_hashlist(blocklist)
+    meta_map[filename] = [version, hashlist]
     return True
 
 # PROJECT 3 APIs below
@@ -146,21 +143,23 @@ def isCrashed():
 if __name__ == "__main__":
     try:
         print("Attempting to start XML-RPC Server...")
-        server = threadedXMLRPCServer(('localhost', 8080), requestHandler=RequestHandler)
+        server = threadedXMLRPCServer(('localhost', 8080), requestHandler=RequestHandler,allow_none=True)
         server.register_introspection_functions()
         server.register_function(ping,"surfstore.ping")
         server.register_function(getblock,"surfstore.getblock")
         server.register_function(putblock,"surfstore.putblock")
         server.register_function(hasblocks,"surfstore.hasblocks")
         server.register_function(getfileinfomap,"surfstore.getfileinfomap")
+
         server.register_instance(meta_map)
         server.register_instance(block_map)
-        #server.register_instance(file_info())
+
 
         server.register_function(updatefile,"surfstore.updatefile")
         server.register_function(update_file_info, "surfstore.update_file_info")
         server.register_function(get_metamap, "surfstore.get_metamap")
-        server.register_function(adder_function, "surfstore.adder_function")
+        server.register_function(update_block_map, "surfstore.update_block_map")
+
 
         server.register_function(isLeader,"surfstore.isleader")
         server.register_function(crash,"surfstore.crash")
