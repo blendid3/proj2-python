@@ -165,14 +165,18 @@ class Client:
             path = Path(self.basedir / name)
             if server_file_info_map[name][0] > file_info_map[name][0]:
                 if server_file_info_map[name][1] != self.deleted_hashes:
-                    blocks = self.get_blocks(path)
-                    for i in range(min(len(server_file_info_map[name][1]), len(file_info_map[name][1]))):
-                        if server_file_info_map[name][1][i] != file_info_map[name][1][i]:
+                    blocks, hashes = self.split_and_hash_file(path)
+                    server_num_of_blocks = len(server_file_info_map[name][1])
+                    if len(hashes) > server_num_of_blocks:
+                        blocks = blocks[:server_num_of_blocks]
+                        hashes = hashes[:server_num_of_blocks]
+                    for i in range(min(server_num_of_blocks, len(hashes))):
+                        if server_file_info_map[name][1][i] != hashes[i]:
                             blocks[i] = self.client.surfstore.getblock(
                                 server_file_info_map[name][1][i]).data
-                    if len(server_file_info_map[name][1]) > len(file_info_map[name][1]):
+                    if server_num_of_blocks > len(hashes):
                         blocks.extend([self.client.surfstore.getblock(
-                            hash).data for hash in file_info_map[name][1][len(file_info_map[name][1]):]])
+                            hash).data for hash in server_file_info_map[name][1][len(hashes):]])
                     self.write_file(path, blocks)
                 elif path.exists():
                     self.delete_file(path)
