@@ -1,12 +1,22 @@
 from xmlrpc.server import SimpleXMLRPCServer
 from xmlrpc.server import SimpleXMLRPCRequestHandler
 from socketserver import ThreadingMixIn
+import hashlib
 
 class RequestHandler(SimpleXMLRPCRequestHandler):
     rpc_paths = ('/RPC2',)
 
 class threadedXMLRPCServer(ThreadingMixIn, SimpleXMLRPCServer):
     pass
+
+
+meta_map = {}
+block_map = {}
+
+def hash_chunk(chunk):
+    sha256 = hashlib.sha256()
+    sha256.update(chunk)
+    return sha256.hexdigest()
 
 # A simple ping, returns true
 def ping():
@@ -18,51 +28,40 @@ def ping():
 def getblock(h):
     """Gets a block"""
     print("GetBlock(" + h + ")")
-
-    blockData = bytes(4)
+    blockData=block_map[h]
     return blockData
 
 # Puts a block
 def putblock(b):
     """Puts a block"""
     print("PutBlock()")
-
+    b = b.data
+    block_map[hash_chunk(b)] = b
     return True
 
 # Given a list of blocks, return the subset that are on this server
 def hasblocks(blocklist):
     """Determines which blocks are on this server"""
     print("HasBlocks()")
-
-    return blocklist
+    return [hash for hash in blocklist if hash in block_map.keys()]
 
 # Retrieves the server's FileInfoMap
 def getfileinfomap():
     """Gets the fileinfo map"""
     print("GetFileInfoMap()")
-
-    result = {}
-
-    # file1.dat
-    file1info = []
-    file1info.append(3) // version
-
-    file1blocks = []
-    file1blocks.append("h1")
-    file1blocks.append("h2")
-    file1blocks.append("h3")
-
-    file1info.append(file1blocks)
-    
-    result["file1.dat"] = file1info
-
-    return result
+    return meta_map
 
 # Update a file's fileinfo entry
 def updatefile(filename, version, blocklist):
     """Updates a file's fileinfo entry"""
     print("UpdateFile()")
 
+    if filename not in meta_map.keys():
+        if version != 1:
+            return False
+    elif version != meta_map[filename][0] + 1:
+        return False
+    meta_map[filename] = [version, blocklist]
     return True
 
 # PROJECT 3 APIs below
